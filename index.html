@@ -41,6 +41,8 @@ body.dragging .page{outline:3px dashed var(--ring)}
 .kw-btn-primary-brand[disabled]{background:#abe3e1;border-color:#abe3e1}
 .kw-btn-secondary-brand{background:transparent;color:var(--brand);border-color:var(--brand)}
 .kw-btn-secondary-brand:hover,.kw-btn-secondary-brand:active{background:var(--brand-l)}
+#fBtn{display:none}
+.fcount{background:var(--brand);color:#fff;border-radius:999px;min-width:20px;height:20px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
 .circ{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:#fff;font-size:18px;color:var(--ink);cursor:pointer}
 .circ:hover{background:var(--line-l)}
 .circ:disabled{opacity:.35;cursor:default;background:#fff}
@@ -295,6 +297,56 @@ table.sets td.w{font-weight:700}
   .seg{margin-left:auto}
   dialog{margin:auto auto 0;border-radius:16px 16px 0 0;max-width:none}
 }
+
+/* ---------- Téléphone (≤ 640 px) : en-tête compact, barre fixe d'une ligne et demie, filtres dans une fenêtre ---------- */
+@media (max-width:640px){
+  .head{padding:10px 12px;gap:8px}
+  .head-row{gap:10px}
+  .logo{width:34px;height:34px;font-size:14px;box-shadow:inset 0 0 0 2px var(--ring)}
+  .head h1{font-size:19px;line-height:24px}
+  .season-line{font-size:12.5px}
+  .head-actions{width:100%;flex-wrap:nowrap;gap:8px}
+  .head .head-actions .kw-btn:not(.kw-btn--sm){flex:1 1 auto;height:34px;padding:0 10px;font-size:13px;min-width:0}
+  .head-sub{flex-direction:column;align-items:stretch;gap:6px;min-width:0}
+  .head-sub>*,.head-row>*{min-width:0;max-width:100%}
+  .clubs,.fresh-row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .clubs::-webkit-scrollbar,.fresh-row::-webkit-scrollbar,.months::-webkit-scrollbar{display:none}
+  .cchip,.cc-add,.pill,.linkbtn{flex:none}
+  .hide-sm{display:none}
+  .sample{padding:8px 10px;font-size:13px;gap:8px}
+  .sample span{min-width:0}
+  .months{scrollbar-width:none}
+  .mo{padding:4px 10px}
+
+  /* barre : [←] mois [→] / stats / [Cette semaine] [Filtres] [Calendrier|Liste] */
+  .bar{gap:6px;padding:6px 0}
+  #prev{order:1} .bar h2{order:2;flex:1;min-width:0;margin:0;text-align:center;font-size:19px}
+  #nextM{order:3}
+  .mstats{order:4;flex-basis:100%;text-align:center;font-size:12px;margin-top:-2px}
+  #today{order:5;height:34px;padding:0 12px;font-size:13px}
+  #fBtn{order:6;display:inline-flex;flex:1 1 auto;height:34px;padding:0 10px;font-size:13px}
+  .seg{order:7;margin-left:0}
+  .seg button{height:34px;padding:0 12px;font-size:13px}
+  .bar .circ{width:34px;height:34px}
+  .frow{display:none;order:8;margin:0}
+  .bar.fopen .frow{display:flex;position:absolute;left:0;right:0;top:100%;flex-direction:column;align-items:stretch;gap:10px;
+    background:#fff;border-radius:12px;padding:12px;box-shadow:0 12px 28px rgba(32,54,61,.3);z-index:40;max-height:72vh;overflow:auto}
+  .tbtn{width:100%;justify-content:center}
+  .tpanel{position:static;width:auto;max-height:42vh;box-shadow:none;border:1px solid var(--line-l);margin-top:6px;padding:8px 10px}
+  .tp-list{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .salles{justify-content:flex-start}
+  #resvBtn{align-self:flex-start}
+
+  /* cartes : un peu plus compactes */
+  .md{gap:10px}
+  .md-d{width:40px}
+  .md-n{font-size:21px}
+  .mlist .card{padding:8px 10px 8px 14px}
+  .mlist .c1 .t{font-size:17px}
+  .rvrow{padding:6px 10px 6px 12px}
+  .rvrow .rvd{min-width:0}
+  .lv-m{font-size:19px;margin-top:14px}
+}
 </style>
 </head>
 <body>
@@ -329,7 +381,8 @@ table.sets td.w{font-weight:700}
         <button class="circ" id="nextM" type="button" aria-label="Mois suivant">→</button>
         <h2 id="monthLabel"></h2>
         <span class="mstats" id="mstats"></span>
-        <div class="frow">
+        <button type="button" class="kw-btn kw-btn-secondary-brand" id="fBtn" aria-expanded="false" aria-controls="frow">Filtres <span class="fcount" id="fCount" hidden></span></button>
+        <div class="frow" id="frow">
       <div class="teamf" id="teamf">
         <button type="button" class="tbtn" id="tBtn" aria-haspopup="true" aria-expanded="false">Équipes <span class="tcount" id="tCount" hidden></span><span aria-hidden="true">▾</span></button>
         <div id="tPanel" class="tpanel" hidden role="group" aria-label="Filtrer par équipe"></div>
@@ -346,7 +399,7 @@ table.sets td.w{font-weight:700}
 
     </div>
     <div class="sample" id="sample" hidden>
-        <span><b>Vous consultez un calendrier d'exemple.</b> Téléchargez l'export de votre club sur ffvbbeach.org, puis déposez le fichier CSV n'importe où sur cette page.</span>
+        <span><b>Vous consultez un calendrier d'exemple.</b> <span class="hide-sm">Téléchargez l'export de votre club sur ffvbbeach.org, puis déposez le fichier CSV n'importe où sur cette page.</span></span>
         <label class="kw-btn kw-btn-primary-brand kw-btn--sm" for="file">Importer mon CSV</label>
       </div>
 
@@ -1033,7 +1086,7 @@ function renderHeader() {
     }
     bar.append(wrap);
   }
-  const add = el("label", "cc-add", "+ Ajouter un fichier (autre club ou autre saison)"); add.setAttribute("for", "file"); add.title = "Importer un CSV : un autre club, ou une autre saison (la saison est détectée)";
+  const add = el("label", "cc-add", "+ Ajouter un fichier"); add.append(el("span", "hide-sm", " (autre club ou autre saison)")); add.setAttribute("for", "file"); add.title = "Importer un CSV : un autre club, ou une autre saison (la saison est détectée)";
   bar.append(add);
 
   // Fraîcheur : une pastille par source
@@ -1182,7 +1235,7 @@ function renderMonth() {
   for (const m of list) { if (!byDate.has(m.date)) byDate.set(m.date, []); byDate.get(m.date).push(m); }
   const inMonth = list.filter(m => m.date.startsWith(monthKey(state.month)));
   const cats = resvCats(), conf = confSet(list);
-  updateResvBtn(list);
+  updateResvBtn(list); updateFilterBadge();
   renderSeasonLine();
   const rg = dataRange();
   $("#prev").disabled = !rg || state.month <= rg[0]; $("#nextM").disabled = !rg || state.month >= rg[1];
@@ -1398,6 +1451,17 @@ function updateTeamBtn() {
   syncAllBoxes();
   const c = $("#tCount"); c.hidden = !state.teams.size; c.textContent = state.teams.size;
 }
+/* Téléphone : les filtres s'ouvrent dans une fenêtre sous la barre (bouton « Filtres », avec le nombre de filtres actifs). */
+const barEl = $(".bar"), fBtn = $("#fBtn");
+function setFilters(open) { barEl.classList.toggle("fopen", open); fBtn.setAttribute("aria-expanded", String(open)); }
+fBtn.addEventListener("click", () => setFilters(!barEl.classList.contains("fopen")));
+document.addEventListener("click", e => { if (barEl.classList.contains("fopen") && !barEl.contains(e.target)) setFilters(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && barEl.classList.contains("fopen")) setFilters(false); });
+function updateFilterBadge() {
+  const n = state.teams.size + state.salles.size, c = $("#fCount");
+  c.hidden = !n; c.textContent = n;
+}
+
 /* Bouton « Réservations CF » : affiche / masque les dates réservées ; ⚠ n = rencontres en conflit (visibles avec les filtres). */
 function updateResvBtn(list) {
   const b = $("#resvBtn"), n = state.showResv ? list.filter(m => resvConflicts(m).length).length : 0;
