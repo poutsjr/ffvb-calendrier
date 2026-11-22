@@ -1,0 +1,21 @@
+{
+  "name": "ffvb-calendrier-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Calendrier club volley (FFVB) : données synchronisées côté serveur, réglages partagés, connexion Google.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node dev/server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.2.1",
+    "jose": "^6.2.18"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17"
+  }
+}

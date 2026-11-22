@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Administration – Calendrier club volley</title>
+<style>
+:root{--brand:#067f7a;--brand-d:#045350;--brand-l:#e0f5f4;--ink:#20363d;--muted:#417b90;--line:#aec7d0;--bg:#f5f8f9;--danger:#b51212;--ok:#00812c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(32,54,61,.16);padding:12px 16px;margin-bottom:12px}
+header h1{font-size:20px;margin:0;flex:1;min-width:200px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border-radius:999px;border:1px solid var(--brand);background:#fff;color:var(--brand);font:600 14px inherit;cursor:pointer;text-decoration:none}
+.btn:hover{background:var(--brand-l)}
+.btn.primary{background:var(--brand);color:#fff}.btn.primary:hover{background:var(--brand-d)}
+.btn.danger{border-color:var(--danger);color:var(--danger)}.btn.danger:hover{background:#fde2e2}
+.btn.sm{height:30px;padding:0 12px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+nav.tabs button{height:36px;padding:0 14px;border-radius:8px;border:0;background:#fff;color:var(--ink);font:600 14px inherit;cursor:pointer;box-shadow:0 1px 3px rgba(32,54,61,.12)}
+nav.tabs button[aria-selected="true"]{background:var(--brand);color:#fff}
+section.card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(32,54,61,.12);padding:16px;margin-bottom:12px}
+section.card h2{font-size:17px;margin:0 0 4px}
+.hint{color:var(--muted);font-size:13px;margin:0 0 10px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+input[type=text],input[type=date],input[type=email],input[type=number],select{height:36px;border:1px solid var(--line);border-radius:8px;padding:0 10px;font:inherit;background:#fff;color:var(--ink);min-width:0}
+input[type=color]{height:36px;width:48px;border:1px solid var(--line);border-radius:8px;padding:2px;background:#fff}
+input:focus,select:focus,button:focus-visible,a:focus-visible{outline:2px solid #3b5bfb;outline-offset:2px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid #eff4f6;vertical-align:middle}
+th{color:var(--muted);font-size:12px;text-transform:uppercase}
+.pill{display:inline-block;border-radius:999px;padding:1px 10px;font-size:12px;font-weight:600;background:#eff4f6}
+.pill.ok{background:#e1f9e9;color:var(--ok)}.pill.error{background:#fde2e2;color:var(--danger)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:8px;padding:10px 16px;z-index:50;max-width:90vw}
+#toast.err{background:var(--danger)}
+.center{text-align:center;padding:48px 16px}
+@media (max-width:640px){.wrap{padding:10px}th:nth-child(n+4),td:nth-child(n+4){white-space:nowrap}.scroll{overflow-x:auto}}
+</style>
+</head>
+<body>
+<div class="wrap" id="root"><p class="center">Chargement…</p></div>
+<div id="toast" hidden role="status"></div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v === true) e.setAttribute(k, ""); else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+let toastTimer;
+function toast(msg, err) { const t = $("#toast"); t.textContent = msg; t.className = err ? "err" : ""; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 4000); }
+
+async function api(method, body) {
+  const res = await fetch("/api/admin", {
+    method, credentials: "same-origin",
+    headers: method === "POST" ? { "Content-Type": "application/json", "X-Requested-With": "fetch" } : {},
+    body: method === "POST" ? JSON.stringify(body) : undefined
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(json.error || `HTTP ${res.status}`), { status: res.status });
+  return json;
+}
+
+let D = null, TAB = "salles";
+const isAdmin = () => D.me.role === "admin";
+const fmt = iso => iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "—";
+
+async function load() {
+  try { D = await api("GET"); }
+  catch (e) {
+    const root = $("#root"); root.replaceChildren();
+    if (e.status === 401) root.append(h("div", { class: "center" }, h("h1", {}, "Administration"), h("p", {}, "Connexion requise."),
+      h("a", { class: "btn primary", href: "/api/auth/login?next=/admin.html" }, "Se connecter avec Google")));
+    else if (e.status === 403) root.append(h("div", { class: "center" }, h("h1", {}, "Accès refusé"), h("p", {}, "Votre compte n'a pas de droits d'édition. Demandez à un administrateur de vous attribuer le rôle « éditeur »."), h("a", { class: "btn", href: "/" }, "Retour au calendrier")));
+    else root.append(h("p", { class: "center" }, "Erreur : " + e.message));
+    return false;
+  }
+  return true;
+}
+async function act(body, okMsg) {
+  try { await api("POST", body); toast(okMsg || "Enregistré"); await load(); render(); }
+  catch (e) { toast(e.message, true); }
+}
+
+function render() {
+  const root = $("#root"); root.replaceChildren();
+  const tabs = [["salles", "Salles et équipes"], ["cf", "Coupe de France"], ["sync", "Synchronisation"]];
+  if (isAdmin()) tabs.push(["clubs", "Clubs"], ["users", "Utilisateurs"], ["audit", "Journal"]);
+  if (!tabs.some(t => t[0] === TAB)) TAB = "salles";
+  root.append(
+    h("header", {}, h("h1", {}, "Administration"),
+      h("span", { class: "pill" }, `${D.me.name || D.me.email} · ${D.me.role}`),
+      h("a", { class: "btn", href: "/" }, "← Calendrier"),
+      h("button", { class: "btn", onclick: async () => { await fetch("/api/auth/logout", { method: "POST", headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" }); location.href = "/"; } }, "Déconnexion")),
+    h("nav", { class: "tabs", role: "tablist" }, tabs.map(([k, label]) =>
+      h("button", { role: "tab", "aria-selected": String(k === TAB), onclick: () => { TAB = k; render(); } }, label)))
+  );
+  root.append(({ salles: tabSalles, cf: tabCf, sync: tabSync, clubs: tabClubs, users: tabUsers, audit: tabAudit })[TAB]());
+}
+
+// ---------- Salles et équipes ----------
+function tabSalles() {
+  const box = h("div");
+  for (const c of D.clubs) {
+    const patterns = D.venues.filter(v => v.club_id === c.id).map(v => v.pattern);
+    const aliases = D.aliases.filter(a => a.club_id === c.id).map(a => ({ raw: a.raw_name, label: a.label }));
+    const vList = h("div"), aList = h("div");
+    const vRow = (val = "") => { const i = h("input", { type: "text", maxlength: 80, value: val, placeholder: "ex. SALLE RÉGIONALE MARÉCHAL", size: 36 });
+      const r = h("div", { class: "row" }, i, h("button", { class: "btn sm danger", type: "button", onclick: () => r.remove() }, "Retirer")); return r; };
+    const aRow = (raw = "", label = "") => { const a = h("input", { type: "text", maxlength: 80, value: raw, placeholder: "Nom dans le fichier FFVB", size: 30 });
+      const b = h("input", { type: "text", maxlength: 40, value: label, placeholder: "Libellé affiché (ex. Équipe 1)", size: 22 });
+      const r = h("div", { class: "row" }, a, "→", b, h("button", { class: "btn sm danger", type: "button", onclick: () => r.remove() }, "Retirer")); return r; };
+    (patterns.length ? patterns : [""]).forEach(p => vList.append(vRow(p)));
+    aliases.forEach(a => aList.append(aRow(a.raw, a.label)));
+    box.append(h("section", { class: "card" },
+      h("h2", {}, `${c.name} (${c.id})`),
+      h("p", { class: "hint" }, "Salles à domicile : un match est « à domicile » si le nom de sa salle contient l'un de ces motifs (sans tenir compte de la casse ni des accents). Une salle absente de la liste = extérieur."),
+      vList,
+      h("div", { class: "row" },
+        h("button", { class: "btn sm", type: "button", onclick: () => vList.append(vRow()) }, "+ Ajouter une salle"),
+        h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "setVenues", clubId: c.id, patterns: [...vList.querySelectorAll("input")].map(i => i.value.trim()).filter(Boolean) }, "Salles enregistrées") }, "Enregistrer les salles")),
+      h("h2", { style: "margin-top:18px" }, "Noms d'équipes"),
+      h("p", { class: "hint" }, "Règle automatique : un nom sans numéro est l'Équipe 1, « … 2 » l'Équipe 2, et en jeunes M13A, M13B… Ajoutez une correspondance seulement pour forcer un libellé précis."),
+      aList,
+      h("div", { class: "row" },
+        h("button", { class: "btn sm", type: "button", onclick: () => aList.append(aRow()) }, "+ Ajouter une correspondance"),
+        h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "setAliases", clubId: c.id, aliases: [...aList.querySelectorAll(".row")].map(r => { const [a, b] = r.querySelectorAll("input"); return { raw: a.value.trim(), label: b.value.trim() }; }).filter(x => x.raw && x.label) }, "Équipes enregistrées") }, "Enregistrer les équipes"))
+    ));
+  }
+  return box;
+}
+
+// ---------- Coupe de France ----------
+function tabCf() {
+  const body = h("tbody");
+  const row = (r = { cat: "M18", day: "", end_day: "", label: "", info: false }) => {
+    const tr = h("tr", {},
+      h("td", {}, h("select", {}, ["M11", "M13", "M15", "M18", "M21"].map(c => h("option", { value: c, selected: c === r.cat }, c)))),
+      h("td", {}, h("input", { type: "date", value: r.day || "" })),
+      h("td", {}, h("input", { type: "date", value: r.end_day || "" })),
+      h("td", {}, h("input", { type: "text", maxlength: 60, value: r.label, placeholder: "ex. 2e tour", size: 22 })),
+      h("td", {}, h("label", {}, h("input", { type: "checkbox", checked: !!r.info }), " échéance")),
+      h("td", {}, h("button", { class: "btn sm danger", type: "button", onclick: () => tr.remove() }, "Retirer")));
+    return tr;
+  };
+  D.cfRounds.forEach(r => body.append(row(r)));
+  return h("section", { class: "card" },
+    h("h2", {}, "Dates réservées – Coupe de France"),
+    h("p", { class: "hint" }, "Ces dates apparaissent sur le calendrier public. Une rencontre d'une autre compétition, de la même catégorie, un jour de tour est signalée ⚠. « Échéance » = simple date limite (rien n'est bloqué)."),
+    h("div", { class: "scroll" }, h("table", {}, h("thead", {}, h("tr", {}, ["Catégorie", "Date", "Fin (période)", "Libellé", "", ""].map(t => h("th", {}, t)))), body)),
+    h("div", { class: "row" },
+      h("button", { class: "btn sm", type: "button", onclick: () => body.append(row()) }, "+ Ajouter une date"),
+      h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "setCfRounds", rounds: [...body.querySelectorAll("tr")].map(tr => {
+        const [sel, d, e, l, i] = [tr.querySelector("select"), ...tr.querySelectorAll("input")];
+        return { cat: sel.value, day: d.value, end: e.value || null, label: l.value.trim(), info: i.checked };
+      }) }, "Dates enregistrées") }, "Enregistrer")));
+}
+
+// ---------- Synchronisation ----------
+function tabSync() {
+  const clubName = id => (D.clubs.find(c => c.id === id) || {}).name || id;
+  const sources = h("tbody", {}, D.sources.map(s => h("tr", {},
+    h("td", {}, clubName(s.club_id)), h("td", {}, s.season),
+    h("td", {}, h("span", { class: "pill " + s.status }, s.status === "ok" ? "OK" : s.status === "error" ? "Erreur" : "En attente")),
+    h("td", {}, fmt(s.fetched_at)), h("td", {}, String(s.row_count)), h("td", {}, s.error || ""))));
+  const card = h("section", { class: "card" },
+    h("h2", {}, "État de la synchronisation FFVB"),
+    h("p", { class: "hint" }, "Une synchronisation automatique a lieu chaque jour. En cas d'erreur, les anciennes données sont conservées."),
+    h("div", { class: "scroll" }, h("table", {}, h("thead", {}, h("tr", {}, ["Club", "Saison", "État", "Dernière synchro", "Matchs", "Détail"].map(t => h("th", {}, t)))), sources)));
+  if (isAdmin()) {
+    const btn = h("button", { class: "btn primary", type: "button", onclick: async () => {
+      btn.disabled = true; btn.textContent = "Synchronisation…";
+      try { const r = await fetch("/api/sync", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-Requested-With": "fetch" }, body: "{}" });
+        const j = await r.json(); if (!r.ok) throw new Error(j.error || "erreur");
+        toast(`${j.results.filter(x => x.ok).length}/${j.results.length} synchronisation(s) réussie(s)`); await load(); render();
+      } catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = "Synchroniser maintenant"; }
+    } }, "Synchroniser maintenant");
+    const chips = h("div", { class: "row" }, D.syncSeasons.map(s => h("span", { class: "pill" }, s + " ",
+      h("button", { class: "btn sm danger", type: "button", onclick: () => act({ action: "setSyncSeasons", seasons: D.syncSeasons.filter(x => x !== s) }, "Saison retirée") }, "×"))));
+    const inp = h("input", { type: "text", placeholder: "2025/2026", size: 10, maxlength: 9 });
+    card.append(h("div", { class: "row" }, btn),
+      h("h2", { style: "margin-top:18px" }, "Saisons suivies en plus de la saison en cours"),
+      h("p", { class: "hint" }, "Ajoutez une saison passée (ex. 2025/2026) pour la rendre consultable. Elle est récupérée à la prochaine synchronisation."), chips,
+      h("div", { class: "row" }, inp, h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "setSyncSeasons", seasons: [...new Set([...D.syncSeasons, inp.value.trim()])] }, "Saison ajoutée") }, "Ajouter")));
+  }
+  return card;
+}
+
+// ---------- Clubs (admin) ----------
+function tabClubs() {
+  const box = h("section", { class: "card" }, h("h2", {}, "Clubs suivis"),
+    h("p", { class: "hint" }, "Le club de référence ne peut pas être supprimé. Désactiver un club le retire du calendrier sans effacer ses réglages."));
+  const body = h("tbody");
+  for (const c of D.clubs) {
+    const name = h("input", { type: "text", value: c.name, maxlength: 80, size: 22 }), short = h("input", { type: "text", value: c.short, maxlength: 30, size: 12 });
+    const col = h("input", { type: "color", value: c.color }), sort = h("input", { type: "number", value: c.sort, style: "width:70px" });
+    const en = h("input", { type: "checkbox", checked: c.enabled });
+    body.append(h("tr", {}, h("td", {}, c.id, c.primary ? h("span", { class: "pill ok", style: "margin-left:6px" }, "référence") : null), h("td", {}, name), h("td", {}, short), h("td", {}, col), h("td", {}, sort), h("td", {}, h("label", {}, en, " actif")),
+      h("td", {}, h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "saveClub", id: c.id, name: name.value, short: short.value, color: col.value, sort: Number(sort.value), enabled: en.checked }, "Club enregistré") }, "Enregistrer"), " ",
+        c.primary ? null : h("button", { class: "btn sm danger", type: "button", onclick: () => { if (confirm(`Supprimer ${c.name} et tous ses matchs ?`)) act({ action: "deleteClub", id: c.id }, "Club supprimé"); } }, "Supprimer"))));
+  }
+  box.append(h("div", { class: "scroll" }, h("table", {}, h("thead", {}, h("tr", {}, ["N° FFVB", "Nom", "Nom court", "Couleur", "Ordre", "", ""].map(t => h("th", {}, t)))), body)));
+  const id = h("input", { type: "text", placeholder: "N° du club (ex. 0590036)", size: 20, maxlength: 10 }), nm = h("input", { type: "text", placeholder: "Nom", size: 22, maxlength: 80 }), sh = h("input", { type: "text", placeholder: "Nom court", size: 12, maxlength: 30 });
+  box.append(h("h2", { style: "margin-top:18px" }, "Ajouter un club"), h("div", { class: "row" }, id, nm, sh,
+    h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "addClub", id: id.value.trim(), name: nm.value, short: sh.value }, "Club ajouté (synchronisez pour récupérer ses matchs)") }, "Ajouter")));
+  return box;
+}
+
+// ---------- Utilisateurs (admin) ----------
+function tabUsers() {
+  const roleSel = (value, onchange) => h("select", { onchange }, [["admin", "Administrateur"], ["editor", "Éditeur"], ["reader", "Lecteur"]].map(([v, l]) => h("option", { value: v, selected: v === value }, l)));
+  const body = h("tbody", {}, D.users.map(u => {
+    const env = D.envAdmins.includes(u.email), me = u.email === D.me.email;
+    return h("tr", {}, h("td", {}, u.email, me ? " (vous)" : ""), h("td", {}, u.name || ""), h("td", {}, env ? h("span", { class: "pill" }, "administrateur (configuration)") : roleSel(u.role, e => act({ action: "setUser", email: u.email, role: e.target.value }, "Rôle modifié"))),
+      h("td", {}, fmt(u.last_login)), h("td", {}, env || me ? "" : h("button", { class: "btn sm danger", type: "button", onclick: () => { if (confirm(`Retirer ${u.email} ?`)) act({ action: "deleteUser", email: u.email }, "Compte retiré"); } }, "Retirer")));
+  }));
+  let newRole = "editor";
+  const em = h("input", { type: "email", placeholder: "adresse Google à autoriser", size: 30, maxlength: 254 });
+  return h("section", { class: "card" },
+    h("h2", {}, "Comptes"),
+    h("p", { class: "hint" }, "Tout le monde peut consulter le calendrier. Seuls les comptes ci-dessous peuvent modifier les réglages : Éditeur = salles, équipes, Coupe de France ; Administrateur = tout, y compris clubs, comptes et synchronisation. Une personne qui n'est pas listée ici ne peut pas se connecter (aucune adresse n'est enregistrée à son passage). Le rôle « Lecteur » ne donne aucun droit d'édition."),
+    h("div", { class: "scroll" }, h("table", {}, h("thead", {}, h("tr", {}, ["Adresse", "Nom", "Rôle", "Dernière connexion", ""].map(t => h("th", {}, t)))), body)),
+    h("h2", { style: "margin-top:18px" }, "Autoriser une personne"),
+    h("div", { class: "row" }, em, roleSel(newRole, e => { newRole = e.target.value; }),
+      h("button", { class: "btn sm primary", type: "button", onclick: () => act({ action: "setUser", email: em.value, role: newRole }, "Compte autorisé") }, "Autoriser")));
+}
+
+// ---------- Journal (admin) ----------
+function tabAudit() {
+  return h("section", { class: "card" }, h("h2", {}, "Journal des modifications (60 dernières)"),
+    h("div", { class: "scroll" }, h("table", {}, h("thead", {}, h("tr", {}, ["Date", "Compte", "Action", "Détail"].map(t => h("th", {}, t)))),
+      h("tbody", {}, D.audit.map(a => h("tr", {}, h("td", {}, fmt(a.at)), h("td", {}, a.email || ""), h("td", {}, a.action), h("td", {}, a.detail || "")))))));
+}
+
+load().then(ok => { if (ok) render(); });
+</script>
+</body>
+</html>
